@@ -195,6 +195,7 @@ public:
     MatrixXd & lastLayerGamma = gammas[layerCount() - 1];
     MatrixXd activationPrime;
     activationFunctionPrime(layerCount() - 1, activationPrime);
+
     hamProd( (trainingOutput - _activations[layerCount() - 1]) * -1.0,
 	     activationPrime, 
 	     lastLayerGamma);
