@@ -1,5 +1,18 @@
 (in-package :deep-learning)
+
 (declaim (optimize (debug 3)))
+
+(defun train-sparse-autoencoder (nn input-generator &key (max-iterations 4000000))
+  "Trains a sparse autoencoder.  INPUT-GENERATOR is a function that
+returns.  "
+  (dotimes (i max-iterations)
+    ;; (i) run a feedforward pass on our network
+    (let ((input (funcall input-generator)))
+      (forward-propagate-activations nn input)
+      (backward-propagate-activations nn input)
+      (perform-sparse-learning-pass nn)))
+  nn)
+
 (defclass sparse-nn ()
   ((weight-matrices :initform nil :initarg :w :initarg :weight-matrices
 		    :accessor nn-weight-matrices
@@ -66,6 +79,7 @@ input and output layers."
 
 (defparameter *weight-decay* 0.002d0)
 (defparameter *alpha* 0.1d0)
+(defparameter *beta* 5.0d0)
 
 (defun backward-propagate-activations (nn training-output)
   "so-called `back propagation'"
@@ -102,12 +116,36 @@ input and output layers."
 		  (copy! (m- (nth-bias (- layer-num 1)) -bias-change)
 			 (nth-bias (- layer-num 1))))))))
 
+(defparameter *target-activation* .04d0)
+(defparameter *running-average-decay* .999d0)
+
 (defun perform-sparse-learning-pass (nn)
   "Update the weights and the like such that they trend towards a
 sparse activation pattern. This is the third step in each learning
 iteration."
-  )
-  
+  (macrolet ((nth-activation (n) `(elt (nn-activations nn) ,n))
+	     (nth-bias (n) `(elt (nn-biases nn) ,n))
+	     (nth-weight-matrix (n) `(elt (nn-weight-matrices nn) ,n)))
+    (loop :for layer-num :from 1 :below (nn-layer-count nn)
+	  :do (progn
+		;; update the activation values for this layer to approach average activation
+		(copy! (m+ (m* (nth-weight-matrix (- layer-num 1))
+			       (nth-activation (- layer-num 1)))
+			   (nth-bias (- layer-num 1)))
+		       (elt (nn-activation-inputs nn) layer-num))
+		(copy! (elt (nn-activation-inputs nn) layer-num)
+		       (nth-activation layer-num))
+		;; update average activations for this layer
+		(let ((average-activations
+		       (m+ (scal (- 1 *running-average-decay*) (nth-activation layer-num))
+			   (scal *running-average-decay*       (elt (nn-activation-averages nn) layer-num)))))
+		  (copy! average-activations (elt (nn-activation-averages nn) layer-num))
+		  ;; update the biases
+		  (let ((bias (nth-bias (- layer-num 1))))
+		    (loop :for unit :from 0 :below (nn-layer-count nn)
+			  :do (let ((bias-adjustment (* -1.0 *alpha* *beta*
+							(- (vref average-activations unit) *target-activation*))))
+				(incf (vref bias unit) bias-adjustment)))))))))
 		    
 (defun activation-function-derivative (nn layer-num)
   "Returns a matrix with the derivative of the activation function
@@ -145,15 +183,3 @@ function to the input matrix, and stores the result in output."))
   (mapmat-into output #'tanh input))
 
 
-
-  
-(defun train-sparse-autoencoder (nn input-generator &key (max-iterations 4000000))
-  "Trains a sparse autoencoder.  INPUT-GENERATOR is a function"
-  
-  (dotimes (i max-iterations)
-    ;;    // (i) run a feedforward pass on our network
-    (let ((input (funcall input-generator)))
-      (forward-propagate-activations nn input)
-      (backward-propagate-activations nn input)
-      (sparse-learning-pass nn)))
-  nn)
