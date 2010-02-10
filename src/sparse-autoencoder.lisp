@@ -1,11 +1,16 @@
 (in-package :deep-learning)
 
-(declaim (optimize (debug 3)))
+(declaim (optimize (speed 3)))
 
-(defun train-sparse-autoencoder (nn input-generator &key (max-iterations 4000000))
+(defparameter *default-max-iterations* 4000000)
+(setf lisp-matrix:*default-implementation* :foreign-array)
+
+(defun train-sparse-autoencoder (nn input-generator &key (max-iterations *default-max-iterations*))
   "Trains a sparse autoencoder.  INPUT-GENERATOR is a function that
 returns.  "
   (dotimes (i max-iterations)
+    (when (= 0 (mod i 1))
+      (format t "Iteration # ~A~%" i))
     ;; (i) run a feedforward pass on our network
     (let ((input (funcall input-generator)))
       (forward-propagate-activations nn input)
@@ -67,7 +72,10 @@ input and output layers."
    (m+ (m* (elt (nn-weight-matrices  nn) (- update-layer 1))
 	   (elt (nn-activations  nn) (- update-layer 1)))
        (elt (nn-biases nn) (- update-layer 1)))
-   (elt (nn-activations  nn) update-layer)))
+   (elt (nn-activation-inputs  nn) update-layer))
+  (activation-fn nn
+                 (elt (nn-activation-inputs nn) update-layer)
+                 (elt (nn-activations nn) update-layer)))
 
 (defun forward-propagate-activations (nn input)
   "Propagates the"
@@ -81,8 +89,17 @@ input and output layers."
 (defparameter *alpha* 0.1d0)
 (defparameter *beta* 5.0d0)
 
+(defun l2norm (mat)
+  "L2 norm of a matrix."
+  (let ((sum 0))
+    (dotimes (r (nrows mat))
+      (dotimes (c (ncols mat))
+        (incf sum (expt (mref mat r c) 2))))
+    (sqrt sum)))
+
 (defun backward-propagate-activations (nn training-output)
   "so-called `back propagation'"
+  (declare (optimize (debug 3))) 
   (let ((gammas (coerce (loop :for i :from 0 :upto (nn-layer-count nn) :collect nil)
 			'vector)))
     (macrolet ((nth-gamma (n) `(elt gammas ,n))
@@ -92,10 +109,12 @@ input and output layers."
       ;; 1. For the output layer, set gamma = (activation[layer] - trainingOutput) .* activationprime(layer)
       (let* ((last-layer-num (1- (nn-layer-count nn)))
 	     (activation-prime (activation-function-derivative nn last-layer-num))
+             (last-layer-errors (m- (elt (nn-activations nn) last-layer-num)
+                                    training-output))
 	     (last-layer-gamma
-	      (m.* (m- (elt (nn-activations nn) last-layer-num)
-		       training-output)
-		   activation-prime)))
+	      (m.* last-layer-errors  activation-prime)))
+        (format t "Reconstruction Error: ~A~%" last-layer-errors)
+        (format t "Activations: ~A~%" (elt (nn-activations nn) last-layer-num))
 	(setf (nth-gamma last-layer-num) last-layer-gamma))
       ;; 2. For each other layer, set gamma = ((_W[layer]Transpose * gamma[layer+1]) .* f'(activationFnInputs[layer])
       (loop :for layer-num :from (- (nn-layer-count nn) 2) :downto 1
