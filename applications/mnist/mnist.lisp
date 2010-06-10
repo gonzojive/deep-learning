@@ -66,6 +66,6 @@
 		   (* (nrows (elt *training-inputs* 0)) (ncols (elt *training-inputs* 0)))))))
     (deep-learning:train-sparse-autoencoder nn
 					    #'(lambda () (elt *training-inputs* (random (length *training-inputs*))))
-					    :max-iterations 100)
+					    :max-iterations 1000)
     nn))
 		      

@@ -97,6 +97,18 @@ input and output layers."
         (incf sum (expt (mref mat r c) 2))))
     (sqrt sum)))
 
+(defun msum (mat)
+  "Sum of a matrix's elements."
+  (let ((sum 0))
+    (dotimes (r (nrows mat))
+      (dotimes (c (ncols mat))
+        (incf sum (mref mat r c))))
+    sum))
+
+(defun mmean (mat)
+  "Sum of a matrix's elements."
+  (/ (msum mat) (* (nrows mat) (ncols mat))))
+
 (defun backward-propagate-activations (nn training-output)
   "so-called `back propagation'"
   (declare (optimize (debug 3))) 
@@ -113,8 +125,8 @@ input and output layers."
                                     training-output))
 	     (last-layer-gamma
 	      (m.* last-layer-errors  activation-prime)))
-        (format t "Reconstruction Error: ~A~%" last-layer-errors)
-        (format t "Activations: ~A~%" (elt (nn-activations nn) last-layer-num))
+        (format t "Mean Reconstruction Error: ~A~%" (mmean (mapmat-into (copy last-layer-errors) #'abs last-layer-errors)))
+        (format t "Mean Activations: ~A~%" (mmean (elt (nn-activations nn) last-layer-num)))
 	(setf (nth-gamma last-layer-num) last-layer-gamma))
       ;; 2. For each other layer, set gamma = ((_W[layer]Transpose * gamma[layer+1]) .* f'(activationFnInputs[layer])
       (loop :for layer-num :from (- (nn-layer-count nn) 2) :downto 1
